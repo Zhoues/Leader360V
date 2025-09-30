@@ -70,6 +70,64 @@ More results and details can be found on our [📖 Project Homepage](https://lea
 
 [[📊 Huggingface Dataset](https://huggingface.co/datasets/Leader360V/Leader360V)]
 
+## 📷 Usage of A$^3$360V Auto-Annotation Framework
+### Environment
+```
+python == 3.10.16
+torch == 2.6.0+cu124
+torchvision == 0.21.0
+pycocotools == 2.0.8
+numpy == 2.2.5
+opencv-python == 4.11.0.86
+sam2
+```
+
+### Preparation
+
+Install [CropFormer](https://github.com/qqlu/Entity/blob/main/Entityv2/CODE.md) with detectron2 under current directory.
+```
+Leader360V
+|----detectron2
+|----|---...
+|----|---projects
+|----|---|---CropFormer
+```
+To prevent module name duplicate error in detectron2 inference pipeline construction: 
+1. Modify the value of field `MODEL.SEM_SEG_HEAD.PIXEL_DECODER_NAME` from `MSDeformAttnPixelDecoder` to `Mask2FormerMSDeformAttnPixelDecoder` in `detectron2/projects/CropFormer/configs/entityv2/entity_segmentation/*.yaml`, except `Base-Mask2Former.yaml`.
+2. Modify the value of field `MODEL.BACKBONE.NAME` from `D2SwinTransformer` to `Mask2FormerD2SwinTransformer` in `detectron2/projects/CropFormer/configs/entityv2/entity_segmentation/cropformer_swin_*.yaml`.
+3. Modify the class name `MSDeformAttnPixelDecoder` to `Mask2FormerMSDeformAttnPixelDecoder` in `detectron2/projects/CropFormer/mask2former/modeling/pixel_decoder/msdeformattn.py`.
+4. Modify the class name `D2SwinTransformer` to `Mask2FormerD2SwinTransformer` in `detectron2/projects/CropFormer/mask2former/modeling/backbone/swin.py`.
+
+### Pretrained Weights
+Download pretrained weights in [CropFormer](https://github.com/qqlu/Entity/tree/main/Entityv2), [OneFormer](https://github.com/SHI-Labs/OneFormer), and [SAM2](https://github.com/facebookresearch/sam2) and put them in `pretrained_models` directory:
+```
+pretrained_models
+|----detectron2
+|----|---CropFormer
+|----|---|---CropFormer_hornet_3x_03823a.pth
+|----|---|---...
+|----|---OneFormer
+|----|---|---ADE20K
+|----|---|---|---250_16_convnext_xl_oneformer_ade20k_160k.pth
+|----|---|---|---...
+|----|---|---Cityscapes
+|----|---|---|---250_16_dinat_l_oneformer_cityscapes_90k.pth
+|----|---|---|---...
+|----|---|---COCO
+|----|---|---|---150_16_dinat_l_oneformer_coco_100ep.pth
+|----|---|---|---...
+|----|---SAM2
+|----|---|---sam2.1_hiera_base_plus.pt
+|----|---|---...
+```
+
+### Inference
+You can modify the model components and set up other parameters in `config.yaml` file.
+Setup the MLLM in `mllm.py` file.
+Then, setup the 360 video (2048 * 1024) path and output dir.
+```bash
+python3 video_segmentor.py
+```
 
 
 ## About Leader360V

@@ -1,0 +1,22 @@
+CropFormer:
+  model_type: "HORNET-LARGE"
+  confidence_threshold: 0.2
+
+OneFormer:
+  model_type: "ConvNeXt"
+
+FramePredictor:
+  max_workers: 8
+  pad_ratio: 0.125
+  overlap_ratio: 0.125
+  mask_area_threshold: 100
+  match_iou_threshold: 0.5
+  merge_iou_threshold: 0.5
+
+SAM2Predictor:
+  sam2_type: "LARGE"
+  matched_iou_threshold: 0.3
+  use_llm: True
+  refine_sam2: True
+  covered_iou_tolerance: 0.002
+  refine_per_second: 5

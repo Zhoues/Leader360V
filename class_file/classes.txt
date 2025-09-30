@@ -1,0 +1,199 @@
+bookcase
+parking meter
+blind, screen
+rail
+booth
+traffic light
+spoon
+tent
+painting, picture
+skateboard
+carrot
+mirror
+field
+cradle
+land, ground, soil
+rock, stone
+bicycle
+path
+net
+bottle
+bag
+building
+bed
+book
+fire hydrant
+shower
+paper
+runway
+wardrobe, closet, press
+screen
+baseball glove
+stage
+rug
+stool
+cushion
+shelf
+arcade machine
+mouse
+tank, storage tank
+house
+column, pillar
+window
+countertop
+counter
+dishwasher
+donut
+person
+pool
+floor
+microwave
+umbrella
+potted plant
+banana
+gravel
+bannister, banister, balustrade, balusters, handrail
+barrel, cask
+cardboard
+truck
+dirt
+kite
+bulletin board
+teddy bear
+skis
+grass
+ship
+other animal
+pot
+stove
+apple
+chest of drawers, chest, bureau, dresser
+knife
+surfboard
+poster, posting, placard, notice, bill, card
+monitor
+toaster
+chair
+remote
+light
+clothes
+keyboard
+banner
+tennis racket
+vase
+case, display case, showcase, vitrine
+lamp
+flower
+mountain, mount, hill
+ceiling
+street lamp
+basket, handbasket
+snowboard
+bar
+oven
+suitcase
+fireplace
+stairs
+escalator, moving staircase, moving stairway
+car
+baseball bat
+boat
+train
+bowl
+flag
+pizza
+water
+fruit
+fountain
+tray
+computer
+towel
+table
+chandelier
+awning, sunshade, sunblind
+radiator
+hot dog
+screen door
+tv
+trash can
+sea
+wine glass
+sconce
+bus
+plaything, toy
+platform
+plane
+ball
+pillow
+toothbrush
+glass, drinking glass
+fork
+cake
+buffet, counter, sideboard
+pier
+tub
+box
+roof
+vegetation
+sky
+signboard, sign
+motorcycle
+railroad
+lake
+wall
+bench
+scissors
+base, pedestal, stand
+sofa
+refrigerator, icebox
+sandwich
+road, route
+laptop
+hair drier
+bridge, span
+river
+fence
+cell phone
+plate
+frisbee
+broccoli
+falls
+sculpture
+can, commode, crapper, pot, potty, stool, throne
+conveyer belt, conveyor belt, conveyer, conveyor, transporter
+blanket, cover
+clock
+sand
+orange
+grandstand, covered stand
+ottoman, pouf, pouffe, puff, hassock
+canopy
+cup
+hood, exhaust hood
+curtain
+door
+sink
+hovel, hut, hutch, shack, shanty
+snow
+fan
+tower
+desk
+food, solid food
+trade name
+toilet
+playingfield
+pole
+tie
+tree
+zebra
+bird
+cat
+dog
+horse
+sheep
+cow
+elephant
+bear
+giraffe
+basketball stands
+fish
