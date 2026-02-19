@@ -2,13 +2,13 @@ import json
 import math
 import time
 import torch
-from sam2_predictor import SAM2Predictor
+from pano.sam2_predictor import SAM2Predictor
 import yaml
 import os
 import shutil
 import cv2
-from utils import mask_to_polygons
-from frame_tools import VideoStreamReader
+from pano.utils import mask_to_polygons
+from pano.frame_tools import VideoStreamReader
 
 
 class VideoSegmentor:
@@ -16,26 +16,34 @@ class VideoSegmentor:
         with open(config_file, "r") as file:
             config = yaml.safe_load(file)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        # 创建 SAM2 预测器，准备进行跟踪
         self.sam2_predictor = SAM2Predictor(**config["SAM2Predictor"],
                                             device=self.device,
                                             other_config=config)
 
     def segment_video(self, video_path: str, work_dir_path: str = "work-dir", visualize: bool = False):
-        os.makedirs(work_dir_path, exist_ok=True)
-        video_name = os.path.basename(video_path)
-        video_name = video_name[:video_name.rindex(".")]
-        work_dir_path = os.path.join(work_dir_path, video_name)
+        os.makedirs(work_dir_path, exist_ok=True) # 创建工作目录
+        video_name = os.path.basename(video_path) # 获取视频名称
+        video_name = video_name[:video_name.rindex(".")] # 获取视频名称,去除后缀
+        work_dir_path = os.path.join(work_dir_path, video_name) # 创建保存结果的目录 (以视频名称作为目录名)
         if os.path.exists(work_dir_path):
-            shutil.rmtree(work_dir_path)
-        os.makedirs(work_dir_path, exist_ok=True)
-        print('=' * 20 + f"Start Segmenting {video_name}" + '=' * 20)
-        start_time = time.time()
-        self.sam2_predictor.predict(video_path)
-        end_time = time.time()
+            shutil.rmtree(work_dir_path) # 如果目录存在则删除
+        os.makedirs(work_dir_path, exist_ok=True) # 创建保存结果的目录
+        print('=' * 20 + f"Start Segmenting {video_name}" + '=' * 20) # 打印开始分割视频
+
+        start_time = time.time() # 开始时间
+        self.sam2_predictor.predict(video_path) # 进行分割
+        end_time = time.time() # 结束时间
+
+        # video_segments 是一个字典，其中键为 frame_idx，然后每一个 frame_id 下还包含 masks 和 object_ids 两个键
+        # 因此，frame_idx_list 是一个列表，列表中的元素是视频的帧索引
         frame_idx_list = sorted(list(self.sam2_predictor.video_segments.keys()))
-        video_reader = VideoStreamReader(video_path)
+        video_reader = VideoStreamReader(video_path) # 创建视频读取器
+
         for frame_idx in frame_idx_list:
+            # 获取第二帧的索引，除以 FPS 是因为需要获取视频的秒数，然后转换为字符串，并补齐为 4 位
             second_index = str(math.ceil((frame_idx + 1) / video_reader.fps)).zfill(4)
+            # 创建保存结果的目录 (以视频的秒数作为目录名)
             frame_dir = os.path.join(work_dir_path, f"{second_index}")
             os.makedirs(frame_dir, exist_ok=True)
             frame = video_reader.read_frame(frame_idx)
@@ -47,8 +55,10 @@ class VideoSegmentor:
                                   "imageData": None,
                                   "imageHeight": frame.shape[0],
                                   "imageWidth": frame.shape[1]
-                                  }
+                    }
+
             for mask, obj_id in zip(masks, obj_ids):
+                # 获取语义标签
                 semantic_label = self.sam2_predictor.semantic_labels[obj_id]
                 polygons = mask_to_polygons(mask)
                 for polygon in polygons:

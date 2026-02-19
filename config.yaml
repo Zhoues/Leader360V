@@ -15,7 +15,7 @@ FramePredictor:
 
 SAM2Predictor:
   sam2_type: "LARGE"
-  matched_iou_threshold: 0.3
+  matched_iou_threshold: 0.2
   use_llm: True
   refine_sam2: True
   covered_iou_tolerance: 0.002

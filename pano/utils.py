@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import torch
 global stuff_list
-from class_tools import stuff_list
+from pano.class_tools import stuff_list
 from pycocotools import mask as coco_mask
 
 
@@ -117,6 +117,9 @@ def match_masks(new_masks: torch.Tensor, sam2_masks: torch.Tensor, matched_iou_t
 
 
 def get_segmented_ratio(masks: torch.Tensor):
+    """
+    计算所有实例 mask 的并集占全图的比例，用于衡量分割结果的完整性。
+    """
     combined_mask = masks.any(dim=0).int()
     nonzero_count_combined = combined_mask.sum()
     total_elements_combined = combined_mask.numel()
@@ -125,6 +128,11 @@ def get_segmented_ratio(masks: torch.Tensor):
 
 
 def merge_stuff_masks(label_list: list, masks: torch.Tensor):
+    """
+    在全景分割/实例分割里通常会区分 thing（可数的实例，如人、车）和 stuff（不可数/背景材质类，如天空、草地、路面）。
+    对于 stuff 类，同一类别往往允许（甚至应该）合并成一张总 mask。
+    这个函数就是：把 label_list + masks 中相同 stuff 类别的 mask 做按位 OR 合并，输出去重后的 label 和对应合并后的 masks。
+    """
     refined_label_list = []
     refined_masks = []
     for label, mask in zip(label_list, masks):
@@ -139,6 +147,9 @@ def merge_stuff_masks(label_list: list, masks: torch.Tensor):
 
 
 def reshape_masks(masks: torch.Tensor):
+    """
+    输入是一组实例二值 mask（形状 B×H×W）。如果不同实例之间有重叠像素，就把重叠部分从面积更小的那个实例里“扣掉”（更准确说：保留更大的那个实例的重叠区域，把重叠从较小者中删除），从而让各实例 mask 尽量互不重叠。
+    """
     B, H, W = masks.shape
     masks_float = masks.to(torch.float)
     intersection = torch.einsum('chw,dhw->cd', masks_float, masks_float)

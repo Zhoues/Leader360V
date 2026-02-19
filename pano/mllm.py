@@ -16,11 +16,11 @@ import threading
 import concurrent.futures
 
 global classes_list
-from class_tools import classes_list
-from omni_tools import OmniImage
+from pano.class_tools import classes_list
+from pano.omni_tools import OmniImage
 
 os.environ["OPENAI_API_KEY"] = ""
-os.environ["OPENAI_BASE_URL"] = ""
+os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:25547/v1"
 
 
 temperature = 0.2
@@ -29,7 +29,7 @@ lock = threading.Lock()
 global openai_async_client
 openai_async_client = None
 
-omni_image = OmniImage()
+omni_image = OmniImage(img_w=3840, img_h=1920)
 
 example_respoonse = json.dumps(
     {"Label": "building", "Thing/Stuff": "stuff"},
@@ -60,9 +60,7 @@ def encode_image(image_numpy):
     wait=wait_exponential(multiplier=1, min=3, max=8),
     retry=retry_if_exception_type((RateLimitError, APIConnectionError, InternalServerError)),
 )
-def gpt_4o_complete_if_cache(
-        model, prompt, system_prompt=None, history_messages=[]
-) -> str:
+def gpt_4o_complete_if_cache(model, prompt, system_prompt=None, history_messages=[]) -> str:
     openai_async_client = get_openai_async_client()
     messages = []
     if system_prompt:
@@ -71,7 +69,7 @@ def gpt_4o_complete_if_cache(
     messages.append({"role": "user", "content": prompt})
 
     response = openai_async_client.chat.completions.create(
-        model=model, messages=messages, max_tokens=512,
+        model=model, messages=messages, max_tokens=2048,
         temperature=temperature,
         seed=seed,
         response_format={"type": "json_object"},
@@ -79,9 +77,7 @@ def gpt_4o_complete_if_cache(
     return response.choices[0].message.content
 
 
-def gpt_4o_complete(
-        model, prompt, system_prompt=None, history_messages=[]
-) -> str:
+def gpt_4o_complete(model, prompt, system_prompt=None, history_messages=[]) -> str:
     return gpt_4o_complete_if_cache(
         model,
         prompt,
@@ -95,8 +91,7 @@ def extract_response_info(response: str):
     return object_infor
 
 
-def mllm_recognize(image: np.ndarray, mask: torch.Tensor | np.ndarray, classes_list: list, mask_id: int = 0,
-                   expand: int = 50):
+def mllm_recognize(image: np.ndarray, mask: torch.Tensor | np.ndarray, classes_list: list, mask_id: int = 0, expand: int = 50):
     if type(mask) is torch.Tensor:
         mask_np = mask.detach().cpu().numpy().astype(np.uint8)
     else:
@@ -145,7 +140,7 @@ def mllm_recognize(image: np.ndarray, mask: torch.Tensor | np.ndarray, classes_l
         ]
     try:
         message = gpt_4o_complete(
-            model="gpt-4o",
+            model="/share/project/zhouenshen/hpfs/ckpt/vlm/Qwen3-VL-8B-Instruct",   # FIXME(zhouenshen): Qwen/Qwen3-VL-8B-Instruct
             prompt=prompt,
             system_prompt=f"""You are a helpful assistant to recognize the object of a mask in an image. A cropped image will be provided. 
                 The known labels are {classes_list}; do not add other new labels.
@@ -160,8 +155,11 @@ def mllm_recognize(image: np.ndarray, mask: torch.Tensor | np.ndarray, classes_l
     return mask_id, object_infor
 
 
-def mllm_judge_new_object(last_frame: np.ndarray, cur_frame: np.ndarray, mask: torch.Tensor | np.ndarray,
-                          mask_id: int = 0, last_expand: int = 200):
+
+
+
+
+def mllm_judge_new_object(last_frame: np.ndarray, cur_frame: np.ndarray, mask: torch.Tensor | np.ndarray, mask_id: int = 0, last_expand: int = 200):
     if type(mask) is torch.Tensor:
         mask_np = mask.detach().cpu().numpy().astype(np.uint8)
     else:

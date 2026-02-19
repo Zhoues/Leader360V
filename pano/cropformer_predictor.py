@@ -7,7 +7,8 @@ from detectron2.config import get_cfg
 from detectron2.engine.defaults import DefaultPredictor
 import sys
 
-sys.path.insert(0, "detectron2/projects/CropFormer")
+# NOTE(zhouenshen): use the absolute path of the CropFormer code in the project
+sys.path.insert(0, "/share/project/zhouenshen/hpfs/code/ActivePerception/Leader360V/detectron2/projects/CropFormer")
 from mask2former.data.dataset_mappers.crop_augmentations import BatchResizeShortestEdge, EntityCrop, EntityCropTransform
 from mask2former import add_maskformer2_config
 from detectron2.projects.deeplab import add_deeplab_config

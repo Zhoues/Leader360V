@@ -178,17 +178,45 @@ class OmniCam():
     def __init__(self, img_w=2048, img_h=1024):
         self.img_w = img_w
         self.img_h = img_h
+
+        # 定义“横向焦距/比例系数” fx：把经度范围 -𝜋 到 𝜋 (总共2𝜋)映射到像素宽度 img_w
         self.fx = img_w / (2 * np.pi)
+        # 定义“纵向焦距/比例系数” fy：把纬度范围 -𝜋/2 到 𝜋/2 (总共𝜋)映射到像素高度 img_h
+        # 这里是负号：因为图像坐标 v 向下增大，但纬度 lat 往“上”是正（𝜋/2），所以要用负比例把方向对齐。
         self.fy = -img_h / np.pi
+
+        # 主点（图像中心）坐标，类似 pinhole 相机里的 (cx, cy)。
         self.cx = img_w / 2
         self.cy = img_h / 2
 
     def uv2lonlat(self, u, v):
+        """
+        像素坐标 → 经纬度
+            u: 图像坐标 x 坐标，范围 [0, img_w)
+            v: 图像坐标 y 坐标，范围 [0, img_h)
+        Returns:
+            lon: 经度，范围 [-𝜋, 𝜋]
+            lat: 纬度，范围 [-𝜋/2, 𝜋/2]
+        """
+        # (1) u + 0.5：把像素索引当作“像素中心”（常见做法，减少半像素偏差）
+        # (2) -self.cx：以图像中心为 0
+        # (3) / self.fx：从像素单位变为弧度单位
+        # (4) 结果 lon 约在 [-𝜋, 𝜋] 之间
         lon = ((u + 0.5) - self.cx) / self.fx
+        # 把像素纵坐标转成纬度，逻辑同上，lat 约在 [-𝜋/2, 𝜋/2] 之间; 这里也有负号，因为 v 向下增大，lat 向上增大，所以也要负比例。
         lat = ((v + 0.5) - self.cy) / self.fy
         return lon, lat
 
     def lonlat2xyz(self, lon, lat):
+        """
+        经纬度 → 单位球面三维坐标 (x,y,z)
+            lon: 经度，范围 [-𝜋, 𝜋]
+            lat: 纬度，范围 [-𝜋/2, 𝜋/2]
+        Returns:
+            x: 三维坐标 x 坐标
+            y: 三维坐标 y 坐标
+            z: 三维坐标 z 坐标
+        """
         x = np.cos(lat) * np.sin(lon)
         y = np.sin(-lat)
         z = np.cos(lat) * np.cos(lon)
@@ -213,12 +241,30 @@ class OmniCam():
         return self.lonlat2uv(lon, lat)
 
     def get_inverse_lonlat(self, R, u, v):
+        """
+        给定旋转矩阵 R（3×3）和像素点 (u,v)，返回“经过旋转后的方向”对应的经纬度
+        常用于：把当前图像像素对应的方向，变换到另一个坐标系/相机姿态下去看它的经纬度。
+            R: 旋转矩阵，3×3
+            u: 图像坐标 x 坐标，范围 [0, img_w)
+            v: 图像坐标 y 坐标，范围 [0, img_h)
+        Returns:
+            lon: 经度，范围 [-𝜋, 𝜋]
+            lat: 纬度，范围 [-𝜋/2, 𝜋/2]
+        """
         x, y, z = self.uv2xyz(u, v)
         xyz = R @ np.array([x, y, z])
         lon, lat = self.xyz2lonlat(xyz[0], xyz[1], xyz[2])
         return lon, lat
 
     def get_rough_FOV(self, bbox_w, bbox_h):
+        """
+        粗略 FOV 估计（按像素比例换算角度）
+            bbox_w: 物体宽度，单位：像素
+            bbox_h: 物体高度，单位：像素
+        Returns:
+            fov_h: 大致的横向 FOV，单位：度
+            fov_v: 大致的纵向 FOV，单位：度
+        """
         return bbox_w / self.img_w * 360, bbox_h / self.img_h * 180
 
 
@@ -226,28 +272,55 @@ class OmniImage(OmniCam):
     def __init__(self, img_w=2048, img_h=1024):
         super().__init__(img_w, img_h)
 
+        # 预先生成一张“全景图每个像素对应的三维方向”的数组 self.xyz，用于后续快速投影。
         self.xyz = self._init_omni_image_cor()
 
     def _init_omni_image_cor(self, fov_h=360, fov_v=180, num_sample_h=None, num_sample_v=None):
+        """
+        生成一个形状约为 (num_sample_v, num_sample_h, 3) 的数组，每个位置是一个单位球方向 (x,y,z)。
+            fov_h: 横向 FOV，单位：度
+            fov_v: 纵向 FOV，单位：度
+            num_sample_h: 横向采样点数，默认 None（自动根据 fov_h 和 fov_v 计算）
+            num_sample_v: 纵向采样点数，默认 None（自动根据 fov_h 和 fov_v 计算）
+        Returns:
+            xyz: “全景图每个像素对应的三维方向”的数组，形状 (num_sample_h, num_sample_v, 3)
+        """
+
+        # 把水平/垂直视场角从度转为弧度
         fov_h = ang2rad(fov_h)
         fov_v = ang2rad(fov_v)
 
+        # 默认采样分辨率，若不指定，水平采样数用图像宽 img_w
         if num_sample_h is None:
             num_sample_h = self.img_w
+        # 垂直采样数按视场比例计算：让采样点在角度上近似保持同等密度。
+        # 对完整全景 360:180=2:1，就会得到 num_sample_v ≈ num_sample_h/2，匹配 2:1
         if num_sample_v is None:
             num_sample_v = int(num_sample_h * (fov_v / fov_h))
 
+        # 视场覆盖是中心对称的
         lon_range = fov_h / 2
         lat_range = fov_v / 2
 
         lon, lat = np.meshgrid(np.linspace(-lon_range, lon_range, num_sample_h),
                                np.linspace(lat_range, -lat_range, num_sample_v))
+        
+        # 调用父类方法，把经纬度网格转换成单位球三维方向网格
         x, y, z = self.lonlat2xyz(lon, lat)
 
         xyz = np.concatenate([x[..., None], y[..., None], z[..., None]], axis=-1)
         return xyz
 
     def _init_perspective_image_cor(self, fov_h, fov_v, num_sample_h, num_sample_v):
+        """
+        生成透视相机（针孔）采样方向，即生成一个透视投影（pinhole）下，图像平面上每个采样点对应的相机坐标系方向向量（未归一化也没关系）。
+            fov_h: 横向 FOV，单位：度
+            fov_v: 纵向 FOV，单位：度
+            num_sample_h: 横向采样点数
+            num_sample_v: 纵向采样点数
+        Returns:
+            xyz: “透视投影下，图像平面上每个采样点对应的相机坐标系方向向量”的数组，形状 (num_sample_h, num_sample_v, 3)
+        """
         fov_h = ang2rad(fov_h)
         fov_v = ang2rad(fov_v)
 
@@ -733,6 +806,10 @@ class OmniImage(OmniCam):
         return bfov
 
     def mask2Bbox(self, mask_image, need_rotation=True, expand: int = 100):
+        """
+        给一张全景(equirect)的二值/灰度 mask，计算一个包围它的 bbox；必要时返回旋转框（minAreaRect），
+        并处理全景图的左右拼接边界问题（物体跨越 u=0/W 时普通 bbox 会很大）。
+        """
         assert self.img_w == mask_image.shape[1] and self.img_h == mask_image.shape[0]
 
         if len(mask_image.shape) > 2:
@@ -744,13 +821,17 @@ class OmniImage(OmniCam):
         if len(test_v) < 8:
             return None
 
-        # Step 1
+        # Step 1: 先从 mask 得到轮廓，并估计目标中心经纬度
+        # 把 mask 转换为多边形/轮廓点集合，并计算轮廓的中心点, 并转换为经纬度 (c_lon, c_lat)
+        # 这个经纬度后面用于“把目标水平移动到图像中间”，解决跨边界问题
         contours1 = convert_mask_to_polygon(mask, max_only=True)
         cx, cy = np.mean(contours1, axis=0)
         c_lon, c_lat = self.uv2lonlat(cx, cy)
-        # horizontal shift, Step 2
+
+        # Step 2：把目标按经度对齐到图像中心（水平 shift）
         mask_image_rotation, R = self.align_center_by_lonlat(mask, c_lon, 0)
         shift = cx - self.img_w * 0.5
+        
         # get the final bbox or rbbox
         contours2 = convert_mask_to_polygon(mask_image_rotation, integrate=True)
         rotation_angle = 0
