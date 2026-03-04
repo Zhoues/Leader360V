@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from pano.frame_tools import left_right_frame_padding, split_frame_with_overlap
-from pano.mllm import mllm_recognize
+from pano.mllm import *
 from pano.omni_mask_merge import fuse_instances
 from pano.oneformer_predictor import OneFormerPredictor
 from pano.cropformer_predictor import CropFormerPredictor
@@ -33,6 +33,7 @@ class FramePredictor:
         self.mask_area_threshold = mask_area_threshold
         self.match_iou_threshold = match_iou_threshold
         self.merge_iou_threshold = merge_iou_threshold
+        self.model_name = other_config["API"]["model_name"]
 
     def pad_and_split(self, image, original_width):
         padded_image, pad_size = left_right_frame_padding(image, self.pad_ratio)
@@ -171,7 +172,7 @@ class FramePredictor:
             if len(unmatched_index_list) != 0:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                     futures = [
-                        executor.submit(mllm_recognize, image, mask, classes_list, entity_index)
+                        executor.submit(mllm_recognize_v3, image, mask, classes_list, entity_index, self.model_name)
                             for entity_index, mask in zip(unmatched_index_list, entity_masks[unmatched_index_list])
                     ]
 

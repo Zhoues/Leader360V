@@ -847,3 +847,174 @@ class OmniImage(OmniCam):
         h = h + expand
         cx = (cx + shift) % self.img_w if w < self.img_w - 1 else self.img_w * 0.5
         return Bbox(cx, cy, w, h, rotation_angle)
+
+    def get_front_view_crop_from_pano(
+        self,
+        img,
+        delta_yaw=0,
+        delta_pitch=0,
+        out_width=640,
+        out_height=480,
+        fov_h=None,
+        fov_v=None,
+        interpolation=cv2.INTER_LINEAR,
+    ):
+        """
+        从当前全景图中按指定视角截取透视投影的矩形图像。
+
+        Args:
+            img: 全景图 (H, W, C)，equirectangular 格式
+            delta_yaw: 中心方向的水平偏移角度（度），正为向右
+            delta_pitch: 中心方向的俯仰偏移角度（度），正为向上
+            out_width: 输出图像宽度
+            out_height: 输出图像高度
+            fov_h: 水平视场角（度）
+            fov_v: 垂直视场角（度），若为 None，则根据 fov_h 和 out_width/out_height 计算
+            interpolation: cv2 插值方式，默认 INTER_LINEAR
+
+        Returns:
+            out: 透视图像 (out_height, out_width, C)
+        """
+        if fov_v is None:
+            fov_v = fov_h * (out_height / out_width)
+        if fov_h is None:
+            fov_h = fov_v * (out_width / out_height)
+        bfov = Bfov(lon=delta_yaw, lat=delta_pitch, fov_h=fov_h, fov_v=fov_v, rotation=0)
+        u, v = self._get_bfov_regin(bfov, projection_type=0, num_sample_h=out_width, num_sample_v=out_height)
+        out = cv2.remap(img, u, v, interpolation=interpolation, borderMode=cv2.BORDER_WRAP)
+        return out
+
+    def get_mask_center_lonlat_deg(self, mask_image):
+        """
+        取 mask 最大连通域的中心，返回经纬度（度）。
+        Returns:
+            (c_lon_deg, c_lat_deg) 或 None（若 mask 无效）
+        """
+        if len(mask_image.shape) > 2:
+            mask = mask_image[:, :, 0].copy()
+        else:
+            mask = mask_image.copy()
+        test_v, test_u = np.where(mask > 0)
+        if len(test_v) < 8:
+            return None
+        contours = convert_mask_to_polygon(mask, max_only=True)
+        cx, cy = np.mean(contours, axis=0)
+        c_lon, c_lat = self.uv2lonlat(cx, cy)
+        return rad2ang(c_lon), rad2ang(c_lat)
+
+    def get_front_view_crop_centered_on_mask(
+        self,
+        image,
+        mask_image,
+        view_width=640,
+        view_height=480,
+        fov_h=100,
+        fov_v=None,
+        expand=50,
+    ):
+        """
+        将 mask 对应物体转到全景正中心（mask 最大连通域中心），投影到 2D 前向透视图，
+        得到该视角下的 bbox/mask，并裁剪；若 bbox 超出视窗则裁到视窗内。
+
+        Args:
+            image: 全景图 (H, W, C)
+            mask_image: 二值 mask (H, W) 或 (H, W, 1)，与 image 同尺寸
+            view_width: 前向透视 view 宽度，默认 640
+            view_height: 前向透视 view 高度，默认 480
+            fov_h: 水平 FOV（度），默认 100；fov_v: 垂直 FOV（度），若为 None，则根据 fov_h 和 view_width/view_height 计算
+            expand: 2D bbox 扩展像素
+
+        Returns:
+            dict: {
+                "front_view": (view_height, view_width, C),
+                "mask_view": (view_height, view_width) uint8,
+                "bbox_2d": (x, y, w, h) 外接 2D bbox，已 clip 到视窗内,
+                "crop_image": 外接 bbox 对应的 2D 裁剪上下文图,
+                "object_crop_image": 外接 bbox 对应的仅物体图（crop 与 mask 相乘）,
+                "bbox_2d_inner": (x, y, w, h) 内接 2D bbox（mask 紧包围），或 None,
+                "crop_image_inner": 内接 bbox 对应的裁剪图，或 None,
+                "object_crop_image_inner": 内接 bbox 对应的仅物体图，或 None,
+            }
+            若 mask 无效或 2D 视角下无前景，则返回 None。
+        """
+        assert image.shape[:2] == (self.img_h, self.img_w)
+        if len(mask_image.shape) > 2:
+            mask_np = mask_image[:, :, 0].astype(np.uint8)
+        else:
+            mask_np = mask_image.astype(np.uint8)
+
+        center = self.get_mask_center_lonlat_deg(mask_np)
+        if center is None:
+            return None
+        c_lon_deg, c_lat_deg = center
+
+        if fov_v is None:
+            fov_v = fov_h * (view_height / view_width)
+        bfov = Bfov(lon=c_lon_deg, lat=c_lat_deg, fov_h=fov_h, fov_v=fov_v, rotation=0)
+        u, v = self._get_bfov_regin(
+            bfov,
+            projection_type=0,
+            num_sample_h=view_width,
+            num_sample_v=view_height,
+        )
+        u = np.clip(u, 0, self.img_w - 1.01).astype(np.float32)
+        v = np.clip(v, 0, self.img_h - 1.01).astype(np.float32)
+
+        front_view = cv2.remap(
+            image, u, v,
+            interpolation=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_WRAP,
+        )
+        mask_view = cv2.remap(
+            mask_np, u, v,
+            interpolation=cv2.INTER_NEAREST,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=0,
+        )
+
+        ys, xs = np.where(mask_view > 0)
+        if len(ys) == 0:
+            return None
+        x_min, x_max = int(np.min(xs)), int(np.max(xs)) + 1
+        y_min, y_max = int(np.min(ys)), int(np.max(ys)) + 1
+
+        x1 = max(0, x_min - expand)
+        y1 = max(0, y_min - expand)
+        x2 = min(view_width, x_max + expand)
+        y2 = min(view_height, y_max + expand)
+        w = x2 - x1
+        h = y2 - y1
+        if w <= 0 or h <= 0:
+            return None
+        bbox_2d = (x1, y1, w, h)
+
+        crop_image = front_view[y1:y2, x1:x2].copy()
+        mask_crop = mask_view[y1:y2, x1:x2]
+        object_crop_image = crop_image * (mask_crop[:, :, np.newaxis] > 0)
+
+        # 内接 2D bbox：mask 紧包围框（不 expand），clip 到视窗内
+        ix1 = max(0, x_min)
+        iy1 = max(0, y_min)
+        ix2 = min(view_width, x_max)
+        iy2 = min(view_height, y_max)
+        iw = ix2 - ix1
+        ih = iy2 - iy1
+        bbox_2d_inner = (ix1, iy1, iw, ih) if iw > 0 and ih > 0 else None
+        if bbox_2d_inner is not None:
+            crop_image_inner = front_view[iy1:iy2, ix1:ix2].copy()
+            mask_crop_inner = mask_view[iy1:iy2, ix1:ix2]
+            object_crop_image_inner = crop_image_inner * (mask_crop_inner[:, :, np.newaxis] > 0)
+        else:
+            crop_image_inner = None
+            object_crop_image_inner = None
+
+        return {
+            "front_view": front_view,
+            "mask_view": mask_view,
+            "bbox_2d": bbox_2d,
+            "crop_image": crop_image,
+            "object_crop_image": object_crop_image,
+            "bbox_2d_inner": bbox_2d_inner,
+            "crop_image_inner": crop_image_inner,
+            "object_crop_image_inner": object_crop_image_inner,
+        }

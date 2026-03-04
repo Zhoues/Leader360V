@@ -176,8 +176,32 @@ def get_duplicate_ratio(masks: torch.Tensor):
 
 
 def mask_to_rle(mask):
-    rle = coco_mask.encode(np.asfortranarray(mask.astype(np.uint8)))
+    rle = coco_mask.encode(np.asfortranarray((mask != 0).astype(np.uint8)))
+    rle["counts"] = rle["counts"].decode("utf-8")
     return rle
+
+
+def rle_to_mask(rle):
+    """Decode COCO compressed and uncompressed RLE formats."""
+    if isinstance(rle['counts'], str):
+        from pycocotools import mask as mask_utils
+        rle_obj = {
+            'size': rle['size'],
+            'counts': rle['counts'].encode('utf-8')
+        }
+        decoded = mask_utils.decode(rle_obj)
+        return decoded.astype(bool)
+    else:
+        h, w = rle['size']
+        counts = list(map(int, rle['counts']))
+        mask = np.zeros(h * w, dtype=bool)
+        idx = 0
+        parity = False
+        for count in counts:
+            mask[idx:idx+count] = parity
+            idx += count
+            parity ^= True
+        return mask.reshape((w, h)).transpose()
 
 
 def mask_to_polygons(mask):
